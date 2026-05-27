@@ -2,7 +2,7 @@
   "name": "Splity",
   "short_name": "Splity",
   "description": "Track your cash",
-  "start_url": "/splity/",
+  "start_url": "/Splity/",
   "display": "standalone",
   "background_color": "#07090f",
   "theme_color": "#00c8ff",
