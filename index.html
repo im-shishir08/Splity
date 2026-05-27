@@ -461,6 +461,22 @@ body {
 .tx-amount { font-family: var(--mono); font-size: 1rem; font-weight: 700; flex-shrink: 0; min-width: 80px; text-align: right; }
 .tx-amount.gave { color: var(--red); }
 .tx-amount.got { color: var(--green); }
+.tx-info-btn {
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+.tx-info-btn:hover { background: var(--neon-glow); border-color: var(--neon); color: var(--neon); }
+
 .tx-del {
   width: 28px; height: 28px;
   border-radius: 6px;
@@ -1203,7 +1219,7 @@ function txItemHTML(tx) {
   const dateStr = d.toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'}) + (tx.time ? ' · ' + tx.time : '');
   const sid = escH(tx.id);
   return `
-    <div class="tx-item" style="cursor:pointer" onclick="if(!event.target.closest('.tx-del'))showTxModal('${sid}')">
+    <div class="tx-item">
       <div class="tx-avatar ${tx.type}">${initials}</div>
       <div class="tx-info">
         <div class="tx-name">${escH(tx.friend)}</div>
@@ -1211,6 +1227,7 @@ function txItemHTML(tx) {
       </div>
       <div class="tx-date">${dateStr}</div>
       <div class="tx-amount ${tx.type}">${tx.type==='gave'?'−':'+'}৳${tx.amount.toLocaleString()}</div>
+      <button class="tx-info-btn" onclick="showTxModal('${sid}')" title="Details">&#9432;</button>
       <button class="tx-del" onclick="deleteTx('${tx.id}')" title="Delete">🗑</button>
     </div>
   `;
