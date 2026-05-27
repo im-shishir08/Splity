@@ -646,6 +646,47 @@ body {
 }
 .btn-danger:hover { background: var(--red); color: #fff; border-color: var(--red); }
 
+/* TX DETAIL MODAL */
+.tx-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.tx-detail-item {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius2);
+  padding: 0.75rem 1rem;
+}
+.tx-detail-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: 0.3rem;
+}
+.tx-detail-value {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.tx-detail-amount {
+  text-align: center;
+  padding: 1rem;
+  border-radius: var(--radius);
+  margin-bottom: 1rem;
+}
+.tx-detail-amount.gave { background: var(--red-bg); border: 1px solid rgba(255,75,110,0.25); }
+.tx-detail-amount.got { background: var(--green-bg); border: 1px solid rgba(0,230,118,0.25); }
+.tx-detail-amount .amt-label { font-size: 0.75rem; color: var(--text2); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.4rem; }
+.tx-detail-amount .amt-value { font-size: 2rem; font-weight: 700; font-family: var(--mono); }
+.tx-detail-amount.gave .amt-value { color: var(--red); }
+.tx-detail-amount.got .amt-value { color: var(--green); }
+.tx-name-clickable { cursor: pointer; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
+.tx-name-clickable:hover { color: var(--neon); }
+
 /* NEON DIVIDER */
 .neon-line {
   height: 1px;
@@ -864,6 +905,17 @@ body {
       <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" id="modal-friend-body"></div>
+  </div>
+</div>
+
+<!-- Transaction Detail Modal -->
+<div class="modal-overlay" id="tx-detail-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="tx-detail-title">📄 Transaction Details</span>
+      <button class="modal-close" onclick="closeTxModal()">✕</button>
+    </div>
+    <div class="modal-body" id="tx-detail-body"></div>
   </div>
 </div>
 
@@ -1153,7 +1205,7 @@ function txItemHTML(tx) {
     <div class="tx-item">
       <div class="tx-avatar ${tx.type}">${initials}</div>
       <div class="tx-info">
-        <div class="tx-name">${escH(tx.friend)}</div>
+        <div class="tx-name tx-name-clickable" onclick="showTxModal('${escH(tx.id)}')">${escH(tx.friend)}</div>
         <div class="tx-reason">${tx.reason ? '📝 '+escH(tx.reason) : (tx.type==='gave'?'Money given':'Money received')}</div>
       </div>
       <div class="tx-date">${dateStr}</div>
@@ -1161,6 +1213,56 @@ function txItemHTML(tx) {
       <button class="tx-del" onclick="deleteTx('${tx.id}')" title="Delete">🗑</button>
     </div>
   `;
+}
+
+function showTxModal(id) {
+  const tx = (window.__txCache || []).find(t => t.id == id);
+  if (!tx) return;
+
+  const d = new Date(tx.date);
+  const dateStr = d.toLocaleDateString('en-GB', {day:'numeric', month:'long', year:'numeric'});
+  const typeLabel = tx.type === 'gave' ? '📤 I Gave' : '📥 I Got';
+  const typeColor = tx.type === 'gave' ? 'var(--red)' : 'var(--green)';
+
+  document.getElementById('tx-detail-title').textContent = '📄 ' + tx.friend + ' — Details';
+  document.getElementById('tx-detail-body').innerHTML = `
+    <div class="tx-detail-amount ${tx.type}">
+      <div class="amt-label">${tx.type === 'gave' ? 'Amount Given' : 'Amount Received'}</div>
+      <div class="amt-value">${tx.type === 'gave' ? '−' : '+'}৳${tx.amount.toLocaleString()}</div>
+    </div>
+    <div class="tx-detail-grid">
+      <div class="tx-detail-item">
+        <div class="tx-detail-label">👤 Friend</div>
+        <div class="tx-detail-value">${escH(tx.friend)}</div>
+      </div>
+      <div class="tx-detail-item">
+        <div class="tx-detail-label">📌 Type</div>
+        <div class="tx-detail-value" style="color:${typeColor}">${typeLabel}</div>
+      </div>
+      <div class="tx-detail-item">
+        <div class="tx-detail-label">📅 Date</div>
+        <div class="tx-detail-value">${dateStr}</div>
+      </div>
+      <div class="tx-detail-item">
+        <div class="tx-detail-label">🕐 Time</div>
+        <div class="tx-detail-value">${tx.time || '—'}</div>
+      </div>
+    </div>
+    <div class="tx-detail-item" style="margin-bottom:1rem">
+      <div class="tx-detail-label">📝 Note / Reason</div>
+      <div class="tx-detail-value" style="margin-top:.3rem;line-height:1.6">${tx.reason ? escH(tx.reason) : '<span style="color:var(--text3);font-style:italic">No note added</span>'}</div>
+    </div>
+    <div class="tx-detail-item" style="margin-bottom:1rem">
+      <div class="tx-detail-label">🕓 Added On</div>
+      <div class="tx-detail-value" style="font-size:.85rem;color:var(--text2)">${tx.createdAt ? new Date(tx.createdAt).toLocaleString('en-GB') : '—'}</div>
+    </div>
+    <button class="btn-danger" style="width:100%;margin-top:.5rem" onclick="closeTxModal();deleteTx('${escH(tx.id)}')">🗑 Delete This Transaction</button>
+  `;
+  document.getElementById('tx-detail-modal').classList.add('open');
+}
+
+function closeTxModal() {
+  document.getElementById('tx-detail-modal').classList.remove('open');
 }
 
 async function deleteTx(id) {
@@ -1407,6 +1509,10 @@ document.getElementById('friend-modal').addEventListener('click', function(e) {
   if (e.target === this) closeModal();
 });
 
+document.getElementById('tx-detail-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeTxModal();
+});
+
 // expose globals
 window.showTab = showTab;
 window.selectType = selectType;
@@ -1421,6 +1527,8 @@ window.showToast = showToast;
 window.addFriend = addFriend;
 window.removeFriend = removeFriend;
 window.renderManageFriends = renderManageFriends;
+window.showTxModal = showTxModal;
+window.closeTxModal = closeTxModal;
 </script>
 </body>
 </html>
