@@ -1201,11 +1201,12 @@ function txItemHTML(tx) {
   const initials = tx.friend.slice(0,2).toUpperCase();
   const d = new Date(tx.date);
   const dateStr = d.toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'}) + (tx.time ? ' · ' + tx.time : '');
+  const sid = escH(tx.id);
   return `
-    <div class="tx-item">
+    <div class="tx-item" style="cursor:pointer" onclick="if(!event.target.closest('.tx-del'))showTxModal('${sid}')">
       <div class="tx-avatar ${tx.type}">${initials}</div>
       <div class="tx-info">
-        <div class="tx-name tx-name-clickable" onclick="showTxModal('${escH(tx.id)}')">${escH(tx.friend)}</div>
+        <div class="tx-name">${escH(tx.friend)}</div>
         <div class="tx-reason">${tx.reason ? '📝 '+escH(tx.reason) : (tx.type==='gave'?'Money given':'Money received')}</div>
       </div>
       <div class="tx-date">${dateStr}</div>
