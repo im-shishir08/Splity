@@ -703,6 +703,14 @@ body {
 .tx-name-clickable { cursor: pointer; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
 .tx-name-clickable:hover { color: var(--neon); }
 
+/* PANEL CONTROLS */
+.panel-controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
 /* NEON DIVIDER */
 .neon-line {
   height: 1px;
@@ -727,14 +735,76 @@ body {
 @media (max-width: 600px) {
   .tx-form { grid-template-columns: 1fr; }
   .tx-form .full { grid-column: 1; }
-  .tx-date { font-size: 0.68rem; }
   .summary-grid { grid-template-columns: 1fr 1fr; }
-  .main-content { padding: 1rem; }
+  .main-content { padding: 0.75rem; }
   .auth-card { padding: 2rem 1.5rem; }
   .friend-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
   .friend-card .f-avatar { width: 38px; height: 38px; font-size: 0.85rem; }
   .friend-card .f-name { font-size: 0.85rem; }
   .friend-card .f-balance { font-size: 0.95rem; }
+
+  /* Tabs: scrollable single row */
+  .tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+    gap: 0.4rem;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab-btn { white-space: nowrap; flex-shrink: 0; font-size: 0.82rem; padding: 0.45rem 0.9rem; }
+
+  /* Panel header: stack search controls vertically */
+  .panel-header { flex-direction: column; align-items: stretch; }
+  .panel-controls {
+    flex-direction: column !important;
+    gap: 0.5rem !important;
+  }
+  .panel-controls .input-field { width: 100% !important; }
+  .panel-controls .btn-danger { width: 100%; justify-content: center; }
+
+  /* TX item: compact 2-line layout */
+  .tx-item {
+    gap: 0.6rem;
+    padding: 0.75rem 0.75rem;
+    position: relative;
+  }
+  .tx-avatar { width: 34px; height: 34px; font-size: 0.8rem; }
+  .tx-info { flex: 1; min-width: 0; }
+  .tx-name { font-size: 0.88rem; }
+  .tx-reason { font-size: 0.74rem; }
+
+  /* Date goes under reason, not in its own column */
+  .tx-date {
+    display: none;
+  }
+  .tx-reason::after {
+    content: attr(data-date);
+    display: block;
+    font-size: 0.7rem;
+    color: var(--text3);
+    font-family: var(--mono);
+    margin-top: 2px;
+  }
+
+  /* Amount smaller, right-aligned */
+  .tx-amount { font-size: 0.9rem; min-width: 60px; }
+
+  /* Action buttons always visible */
+  .tx-info-btn, .tx-del {
+    width: 26px; height: 26px;
+    font-size: 0.85rem;
+  }
+
+  /* Summary cards smaller */
+  .summary-card { padding: 0.85rem 0.9rem; }
+  .summary-card .value { font-size: 1.3rem; }
+
+  /* Topbar compact */
+  .topbar { padding: 0 0.75rem; height: 52px; }
+  .user-name { display: none; }
+  .user-chip { padding: 0.3rem 0.5rem; }
 }
 </style>
 </head>
@@ -813,7 +883,7 @@ body {
       <div class="panel">
         <div class="panel-header">
           <span class="panel-title">🗒️ All Transactions</span>
-          <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+          <div class="panel-controls">
             <div class="search-bar">
               <span class="s-icon">🔍</span>
               <input type="text" placeholder="Search name or reason..." oninput="renderAll(this.value)" id="search-input">
@@ -1223,7 +1293,7 @@ function txItemHTML(tx) {
       <div class="tx-avatar ${tx.type}">${initials}</div>
       <div class="tx-info">
         <div class="tx-name">${escH(tx.friend)}</div>
-        <div class="tx-reason">${tx.reason ? '📝 '+escH(tx.reason) : (tx.type==='gave'?'Money given':'Money received')}</div>
+        <div class="tx-reason" data-date="${dateStr}">${tx.reason ? '📝 '+escH(tx.reason) : (tx.type==='gave'?'Money given':'Money received')}</div>
       </div>
       <div class="tx-date">${dateStr}</div>
       <div class="tx-amount ${tx.type}">${tx.type==='gave'?'−':'+'}৳${tx.amount.toLocaleString()}</div>
