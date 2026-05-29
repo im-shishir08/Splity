@@ -1456,7 +1456,11 @@ window.checkUsernameAvailable = async (username) => {
     const ref = doc(db, 'usernames', username);
     const snap = await getDoc(ref);
     return !snap.exists();
-  } catch { return false; }
+  } catch (e) {
+    // Permission denied = rules not set correctly, tell user
+    if (e.code === 'permission-denied') throw new Error('rules');
+    return false;
+  }
 };
 
 window.saveUserProfile = async (username, displayName) => {
@@ -2371,17 +2375,26 @@ function onUsernameInput(val) {
   el.className = 'username-status checking';
 
   usernameCheckTimer = setTimeout(async () => {
-    const available = await window.checkUsernameAvailable(val);
-    if (available) {
-      el.textContent = '✅ Available!';
-      el.className = 'username-status ok';
-      usernameIsValid = true;
-      // Enable button if display name also filled
-      const dn = document.getElementById('setup-displayname').value.trim();
-      if (dn.length >= 1) btn.disabled = false;
-    } else {
-      el.textContent = '❌ Already taken — try another';
-      el.className = 'username-status error';
+    try {
+      const available = await window.checkUsernameAvailable(val);
+      if (available) {
+        el.textContent = '✅ Available!';
+        el.className = 'username-status ok';
+        usernameIsValid = true;
+        const dn = document.getElementById('setup-displayname').value.trim();
+        if (dn.length >= 1) btn.disabled = false;
+      } else {
+        el.textContent = '❌ Already taken — try another';
+        el.className = 'username-status error';
+      }
+    } catch(e) {
+      if (e.message === 'rules') {
+        el.innerHTML = '⚠️ Firestore Rules allow read নেই। <a href="https://console.firebase.google.com" target="_blank" style="color:var(--neon)">Console-এ fix করো →</a>';
+        el.className = 'username-status error';
+      } else {
+        el.textContent = '⚠️ Check করা যায়নি — আবার try করো';
+        el.className = 'username-status error';
+      }
     }
   }, 700);
 }
