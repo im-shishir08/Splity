@@ -1620,6 +1620,15 @@ window.cancelFriendRequestDB = async (toUid) => {
   await deleteDoc(doc(db, 'users', toUid, 'friendRequests', reqDocId));
 };
 
+// Check if request already sent to a user
+window.checkReqAlreadySent = async (toUid) => {
+  try {
+    const reqDocId = currentUid + '_to_' + toUid;
+    const snap = await getDoc(doc(db, 'users', toUid, 'friendRequests', reqDocId));
+    return snap.exists() && snap.data().status === 'pending';
+  } catch { return false; }
+};
+
 // Update own display name
 window.updateMyDisplayNameDB = async (newName) => {
   await updateDoc(doc(db, 'users', currentUid), { displayName: newName });
@@ -2514,9 +2523,41 @@ async function searchFriendUser() {
     area.innerHTML = `<p style="color:var(--text3);font-size:.82rem;margin-top:.75rem">That's you! 😄</p>`;
     return;
   }
-  // Check if already friends
+
   const alreadyFriend = (window.__friendsCache || []).some(f => f.uid === result.uid);
   const initials = (result.displayName||'?').slice(0,2).toUpperCase();
+
+  // Check if request already sent (Firestore-এ deterministic doc check)
+  const alreadySent = await window.checkReqAlreadySent(result.uid);
+
+  if (alreadyFriend) {
+    area.innerHTML = `
+      <div class="user-result" style="border-color:rgba(0,230,118,.3)">
+        <div class="req-avatar" style="border-color:var(--green);background:var(--green-bg);color:var(--green)">${initials}</div>
+        <div class="user-result-info">
+          <div class="user-result-name">${escH(result.displayName)}</div>
+          <div class="user-result-username">@${escH(result.username)}</div>
+        </div>
+        <button class="btn-send-req" disabled>✓ Already friends</button>
+      </div>`;
+    return;
+  }
+
+  if (alreadySent) {
+    area.innerHTML = `
+      <div class="user-result" style="border-color:rgba(0,200,255,.25);flex-wrap:wrap;gap:.5rem">
+        <div class="req-avatar">${initials}</div>
+        <div class="user-result-info" style="flex:1">
+          <div class="user-result-name">${escH(result.displayName)}</div>
+          <div class="user-result-username">@${escH(result.username)}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:.35rem">
+          <span style="font-size:.75rem;color:var(--neon);background:var(--neon-glow);padding:2px 8px;border-radius:10px;border:1px solid var(--border2)">⏳ Request pending</span>
+          <button onclick="cancelFriendReq('${escH(result.uid)}','${escH(result.username)}')" style="padding:.3rem .75rem;background:var(--red-bg);color:var(--red);border:1px solid rgba(255,75,110,.3);border-radius:6px;font-family:var(--font);font-size:.75rem;font-weight:600;cursor:pointer">✕ Cancel Request</button>
+        </div>
+      </div>`;
+    return;
+  }
 
   area.innerHTML = `
     <div class="user-result">
@@ -2525,8 +2566,8 @@ async function searchFriendUser() {
         <div class="user-result-name">${escH(result.displayName)}</div>
         <div class="user-result-username">@${escH(result.username)}</div>
       </div>
-      <button class="btn-send-req" id="req-btn" onclick="sendFriendReq('${escH(result.uid)}','${escH(result.username)}','${escH(result.displayName)}')" ${alreadyFriend ? 'disabled' : ''}>
-        ${alreadyFriend ? '✓ Already friends' : '➕ Send Request'}
+      <button class="btn-send-req" id="req-btn" onclick="sendFriendReq('${escH(result.uid)}','${escH(result.username)}','${escH(result.displayName)}')">
+        ➕ Send Request
       </button>
     </div>
   `;
@@ -2604,6 +2645,7 @@ if (!window.declineFriendRequestDB) window.declineFriendRequestDB = async () => 
 if (!window.removeVerifiedFriendDB) window.removeVerifiedFriendDB = async () => {};
 if (!window.updateCustomDisplayNameDB) window.updateCustomDisplayNameDB = async () => {};
 if (!window.cancelFriendRequestDB) window.cancelFriendRequestDB = async () => {};
+if (!window.checkReqAlreadySent) window.checkReqAlreadySent = async () => false;
 if (!window.updateMyDisplayNameDB) window.updateMyDisplayNameDB = async () => {};
 if (!window.addVerifiedTxToDB) window.addVerifiedTxToDB = async (tx, fUid, mirror) => ({ myId: Date.now().toString(), mirrorId: (Date.now()+1).toString() });
 
