@@ -1037,6 +1037,7 @@ body {
         <div class="username-hint">Lowercase letters, numbers, underscores · 3–20 chars · Cannot be changed later</div>
       </div>
       <button class="btn-primary" id="setup-submit-btn" onclick="submitProfile()" disabled>✅ Create Profile</button>
+      <button onclick="doLogout()" style="width:100%;margin-top:.6rem;padding:.7rem;background:transparent;border:1px solid var(--border);border-radius:var(--radius2);color:var(--text3);font-family:var(--font);font-size:.85rem;cursor:pointer;transition:all .2s" onmouseover="this.style.color='var(--red)';this.style.borderColor='var(--red)'" onmouseout="this.style.color='var(--text3)';this.style.borderColor='var(--border)'">🚪 Sign Out</button>
     </div>
   </div>
 </div>
@@ -1115,7 +1116,7 @@ body {
     </div>
     <div class="topbar-actions">
       <button class="icon-btn" onclick="toggleTheme()" id="theme-btn" title="Toggle theme">🌙</button>
-      <div class="user-chip" onclick="doLogout()" title="Click to sign out">
+      <div class="user-chip" onclick="openProfileModal()" title="Profile & Settings">
         <img id="user-photo" class="user-avatar" src="" alt="" style="display:none">
         <div id="user-initials" class="user-avatar-fallback"></div>
         <span class="user-name" id="user-name-display"></span>
@@ -1282,6 +1283,49 @@ body {
           </div>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Profile Modal -->
+<div class="modal-overlay" id="profile-modal">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-header">
+      <span class="modal-title">👤 My Profile</span>
+      <button class="modal-close" onclick="document.getElementById('profile-modal').classList.remove('open')">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- Profile Info -->
+      <div style="text-align:center;margin-bottom:1.25rem">
+        <div style="width:60px;height:60px;border-radius:50%;background:var(--neon-glow);border:2px solid var(--neon);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.3rem;color:var(--neon);margin:0 auto .75rem" id="pm-avatar"></div>
+        <div style="font-size:1.05rem;font-weight:700" id="pm-displayname"></div>
+        <div style="font-size:.82rem;color:var(--neon);font-family:var(--mono);margin-top:.2rem" id="pm-username"></div>
+        <div style="font-size:.75rem;color:var(--text3);margin-top:.2rem" id="pm-email"></div>
+      </div>
+
+      <!-- Change Display Name -->
+      <div style="margin-bottom:1rem">
+        <div class="section-label">Change Display Name</div>
+        <div style="display:flex;gap:.5rem">
+          <input type="text" id="pm-new-displayname" class="input-field" placeholder="New display name..." maxlength="40" style="flex:1"
+            onkeydown="if(event.key==='Enter')saveNewDisplayName()">
+          <button class="btn-add" onclick="saveNewDisplayName()">Save</button>
+        </div>
+      </div>
+
+      <!-- Username (read only) -->
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius2);padding:.65rem 1rem;margin-bottom:1.25rem;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:.68rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:.2rem">Username</div>
+          <div style="font-family:var(--mono);font-size:.9rem;color:var(--neon)" id="pm-username-field"></div>
+        </div>
+        <span style="font-size:.65rem;color:var(--text3);background:var(--bg);padding:2px 7px;border-radius:10px;border:1px solid var(--border)">permanent</span>
+      </div>
+
+      <!-- Sign Out -->
+      <button onclick="doLogout()" class="btn-danger" style="width:100%;padding:.75rem;font-size:.9rem;justify-content:center;display:flex;align-items:center;gap:.5rem">
+        🚪 Sign Out
+      </button>
     </div>
   </div>
 </div>
@@ -1494,18 +1538,12 @@ window.searchUserByUsername = async (username) => {
 };
 
 window.sendFriendRequestDB = async (toUid, toUsername, toDisplayName) => {
-  // Check if already friends
-  const myFriendsSnap = await getDocs(collection(db, 'users', currentUid, 'friends'));
-  const alreadyFriend = myFriendsSnap.docs.some(d => d.data().uid === toUid);
+  // Check if already friends (from cache — no cross-user read needed)
+  const alreadyFriend = (window.__friendsCache || []).some(f => f.uid === toUid);
   if (alreadyFriend) throw new Error('Already friends');
-  // Check if request already sent (pending in their inbox)
-  const reqSnap = await getDocs(
-    query(collection(db, 'users', toUid, 'friendRequests'),
-      where('fromUid', '==', currentUid), where('status', '==', 'pending'))
-  );
-  if (!reqSnap.empty) throw new Error('Request already sent');
-  // Send request
-  await addDoc(collection(db, 'users', toUid, 'friendRequests'), {
+  // Use deterministic doc ID to prevent duplicates: fromUid_to_toUid
+  const reqDocId = currentUid + '_to_' + toUid;
+  await setDoc(doc(db, 'users', toUid, 'friendRequests', reqDocId), {
     fromUid: currentUid,
     fromUsername: window.__myProfile.username,
     fromDisplayName: window.__myProfile.displayName,
@@ -1524,10 +1562,12 @@ window.loadFriendRequestsDB = async () => {
 };
 
 window.acceptFriendRequestDB = async (req) => {
-  const batch = writeBatch(db);
-  // Add them to my friends
-  const myFriendRef = doc(collection(db, 'users', currentUid, 'friends'));
-  batch.set(myFriendRef, {
+  // Use deterministic doc IDs so re-accepting doesn't duplicate
+  const myFriendDocId = req.fromUid;   // their uid as doc id in my friends
+  const theirFriendDocId = currentUid; // my uid as doc id in their friends
+
+  // 1. Add them to MY friends
+  await setDoc(doc(db, 'users', currentUid, 'friends', myFriendDocId), {
     uid: req.fromUid,
     username: req.fromUsername,
     displayName: req.fromDisplayName,
@@ -1535,9 +1575,9 @@ window.acceptFriendRequestDB = async (req) => {
     type: 'verified',
     createdAt: new Date().toISOString()
   });
-  // Add me to their friends
-  const theirFriendRef = doc(collection(db, 'users', req.fromUid, 'friends'));
-  batch.set(theirFriendRef, {
+
+  // 2. Add ME to THEIR friends
+  await setDoc(doc(db, 'users', req.fromUid, 'friends', theirFriendDocId), {
     uid: currentUid,
     username: window.__myProfile.username,
     displayName: window.__myProfile.displayName,
@@ -1545,9 +1585,9 @@ window.acceptFriendRequestDB = async (req) => {
     type: 'verified',
     createdAt: new Date().toISOString()
   });
-  // Mark request as accepted
-  batch.update(doc(db, 'users', currentUid, 'friendRequests', req.id), { status: 'accepted' });
-  await batch.commit();
+
+  // 3. Mark request as accepted
+  await updateDoc(doc(db, 'users', currentUid, 'friendRequests', req.id), { status: 'accepted' });
 };
 
 window.declineFriendRequestDB = async (reqId) => {
@@ -1572,6 +1612,19 @@ window.updateCustomDisplayNameDB = async (friendDocId, newName) => {
   await updateDoc(doc(db, 'users', currentUid, 'friends', friendDocId), {
     customDisplayName: newName
   });
+};
+
+// Cancel a sent friend request
+window.cancelFriendRequestDB = async (toUid) => {
+  const reqDocId = currentUid + '_to_' + toUid;
+  await deleteDoc(doc(db, 'users', toUid, 'friendRequests', reqDocId));
+};
+
+// Update own display name
+window.updateMyDisplayNameDB = async (newName) => {
+  await updateDoc(doc(db, 'users', currentUid), { displayName: newName });
+  // Also update in all friends' lists where uid == currentUid
+  // (best-effort — not critical)
 };
 
 // ──────────────────────────────────────────
@@ -2484,9 +2537,11 @@ async function sendFriendReq(uid, username, displayName) {
   if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
   try {
     await window.sendFriendRequestDB(uid, username, displayName);
+    window.__lastSentReqUid = uid;
     document.getElementById('search-result-area').innerHTML = `
-      <div class="user-result" style="border-color:rgba(0,230,118,.3)">
-        <span style="color:var(--green);font-size:.9rem">✅ Friend request sent to <strong>@${escH(username)}</strong>!</span>
+      <div class="user-result" style="border-color:rgba(0,230,118,.3);flex-wrap:wrap;gap:.5rem">
+        <span style="color:var(--green);font-size:.88rem;flex:1">✅ Request sent to <strong>@${escH(username)}</strong></span>
+        <button onclick="cancelFriendReq('${escH(uid)}','${escH(username)}')" style="padding:.35rem .85rem;background:var(--red-bg);color:var(--red);border:1px solid rgba(255,75,110,.3);border-radius:6px;font-family:var(--font);font-size:.78rem;font-weight:600;cursor:pointer">✕ Cancel Request</button>
       </div>
     `;
     showToast(`Request sent to @${username}`);
@@ -2494,6 +2549,19 @@ async function sendFriendReq(uid, username, displayName) {
     if (btn) { btn.disabled = false; btn.textContent = '➕ Send Request'; }
     showToast('Error: ' + e.message);
   }
+}
+
+async function cancelFriendReq(toUid, username) {
+  try {
+    await window.cancelFriendRequestDB(toUid);
+    document.getElementById('search-result-area').innerHTML = `
+      <div class="user-result" style="border-color:rgba(255,75,110,.3)">
+        <span style="color:var(--red);font-size:.88rem">✕ Request to <strong>@${escH(username)}</strong> cancelled</span>
+        <button class="btn-send-req" onclick="sendFriendReq('${escH(toUid)}','${escH(username)}','')">➕ Send Again</button>
+      </div>
+    `;
+    showToast('Friend request cancelled');
+  } catch(e) { showToast('Error: ' + e.message); }
 }
 
 async function deleteAllRecords() {
@@ -2535,6 +2603,8 @@ if (!window.acceptFriendRequestDB) window.acceptFriendRequestDB = async () => {}
 if (!window.declineFriendRequestDB) window.declineFriendRequestDB = async () => {};
 if (!window.removeVerifiedFriendDB) window.removeVerifiedFriendDB = async () => {};
 if (!window.updateCustomDisplayNameDB) window.updateCustomDisplayNameDB = async () => {};
+if (!window.cancelFriendRequestDB) window.cancelFriendRequestDB = async () => {};
+if (!window.updateMyDisplayNameDB) window.updateMyDisplayNameDB = async () => {};
 if (!window.addVerifiedTxToDB) window.addVerifiedTxToDB = async (tx, fUid, mirror) => ({ myId: Date.now().toString(), mirrorId: (Date.now()+1).toString() });
 
 // Modal close on backdrop
@@ -2543,8 +2613,45 @@ document.getElementById('tx-detail-modal').addEventListener('click', function(e)
 document.getElementById('send-req-modal').addEventListener('click', function(e) { if (e.target === this) closeSendReqModal(); });
 document.getElementById('custom-name-modal').addEventListener('click', function(e) { if (e.target === this) document.getElementById('custom-name-modal').classList.remove('open'); });
 document.getElementById('frnd-warn-modal').addEventListener('click', function(e) { if (e.target === this) document.getElementById('frnd-warn-modal').classList.remove('open'); });
+document.getElementById('profile-modal').addEventListener('click', function(e) { if (e.target === this) document.getElementById('profile-modal').classList.remove('open'); });
 
 // Expose globals
+
+// ── Profile Modal ──
+function openProfileModal() {
+  const p = window.__myProfile;
+  if (!p) return;
+  const av = document.getElementById('pm-avatar');
+  if (av) av.textContent = (p.displayName||'?').slice(0,2).toUpperCase();
+  const dn = document.getElementById('pm-displayname');
+  if (dn) dn.textContent = p.displayName || '';
+  const un = document.getElementById('pm-username');
+  if (un) un.textContent = '@' + (p.username || '');
+  const unf = document.getElementById('pm-username-field');
+  if (unf) unf.textContent = '@' + (p.username || '');
+  const em = document.getElementById('pm-email');
+  if (em) em.textContent = p.email || '';
+  const inp = document.getElementById('pm-new-displayname');
+  if (inp) inp.value = '';
+  document.getElementById('profile-modal').classList.add('open');
+}
+
+async function saveNewDisplayName() {
+  const inp = document.getElementById('pm-new-displayname');
+  const newName = inp ? inp.value.trim() : '';
+  if (!newName) return showToast('নাম লেখো');
+  if (newName === window.__myProfile?.displayName) return showToast('Same name already set');
+  try {
+    await window.updateMyDisplayNameDB(newName);
+    window.__myProfile.displayName = newName;
+    updateMyProfileUI(window.__myProfile);
+    if (inp) inp.value = '';
+    document.getElementById('profile-modal').classList.remove('open');
+    showToast('✅ Display name updated!');
+    renderVerifiedFriends();
+  } catch(e) { showToast('Error: ' + e.message); }
+}
+
 window.showTab = showTab;
 window.selectType = selectType;
 window.toggleTheme = toggleTheme;
@@ -2571,6 +2678,9 @@ window.confirmAcceptRequest = confirmAcceptRequest;
 window.doDeclineRequest = doDeclineRequest;
 window.openCustomNameModal = openCustomNameModal;
 window.saveCustomName = saveCustomName;
+window.openProfileModal = openProfileModal;
+window.saveNewDisplayName = saveNewDisplayName;
+window.cancelFriendReq = cancelFriendReq;
 </script>
 </body>
 </html>
