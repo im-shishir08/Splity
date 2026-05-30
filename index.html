@@ -1595,12 +1595,10 @@ window.declineFriendRequestDB = async (reqId) => {
 };
 
 window.removeVerifiedFriendDB = async (friendDocId, friendUid) => {
-  // Remove from my friends
-  await deleteDoc(doc(db, 'users', currentUid, 'friends', friendDocId));
-  // Remove me from their friends — doc ID is always currentUid (deterministic)
-  try {
-    await deleteDoc(doc(db, 'users', friendUid, 'friends', currentUid));
-  } catch {}
+  // Remove from MY friends (by stored doc id)
+  try { await deleteDoc(doc(db, 'users', currentUid, 'friends', friendDocId)); } catch {}
+  // Remove me from THEIR friends — doc ID is currentUid (set deterministically on accept)
+  try { await deleteDoc(doc(db, 'users', friendUid, 'friends', currentUid)); } catch {}
 };
 
 window.updateCustomDisplayNameDB = async (friendDocId, newName) => {
@@ -1611,8 +1609,15 @@ window.updateCustomDisplayNameDB = async (friendDocId, newName) => {
 
 // Cancel a sent friend request
 window.cancelFriendRequestDB = async (toUid) => {
+  // 1. Delete the friend request doc
   const reqDocId = currentUid + '_to_' + toUid;
-  await deleteDoc(doc(db, 'users', toUid, 'friendRequests', reqDocId));
+  try { await deleteDoc(doc(db, 'users', toUid, 'friendRequests', reqDocId)); } catch {}
+
+  // 2. Remove from MY friends list (in case it was already accepted)
+  try { await deleteDoc(doc(db, 'users', currentUid, 'friends', toUid)); } catch {}
+
+  // 3. Remove ME from THEIR friends list
+  try { await deleteDoc(doc(db, 'users', toUid, 'friends', currentUid)); } catch {}
 };
 
 // Check if request already sent to a user
@@ -1674,13 +1679,9 @@ window.addTxToDB = async (tx) => {
 
 // Add a verified (mirrored) transaction to both users
 window.addVerifiedTxToDB = async (myTx, friendUid, mirroredTx) => {
-  // Validate: friend must still have us in their friends list
-  const theirFriendDoc = await getDoc(doc(db, 'users', friendUid, 'friends', currentUid));
-  if (!theirFriendDoc.exists()) {
-    throw new Error('FRIENDSHIP_REMOVED');
-  }
   // Save mirror to friend's collection first
-  const mirrorRef = await addDoc(collection(db, 'users', friendUid, 'transactions'), mirroredTx);  // Save my tx with mirroredTxId
+  const mirrorRef = await addDoc(collection(db, 'users', friendUid, 'transactions'), mirroredTx);
+  // Save my tx with mirroredTxId
   const fullMyTx = { ...myTx, mirroredTxId: mirrorRef.id, mirroredUserUid: friendUid };
   const myRef = await addDoc(collection(db, 'users', currentUid, 'transactions'), fullMyTx);
   // Update mirror with my tx id
@@ -2180,19 +2181,12 @@ async function addTransaction() {
     showToast(`✅ Transaction added${isVerified ? ' (shared with friend)' : ''}`);
     showTab('all');
     renderAll();
-} catch(e) {
-    if (e.message === 'FRIENDSHIP_REMOVED') {
-      showToast('⚠️ This user removed you from their friend list । The Transaction wasn't added।');
-      window.__friendsCache = (window.__friendsCache || []).filter(f => f.uid !== friendObj.uid);
-      refreshFriendSelect();
-      renderSummary();
-    } else {
-      showToast('Error saving: ' + e.message);
-    }
+  } catch(e) {
+    showToast('Error saving: ' + e.message);
   }
 }
 
-function refreshFriendSelect()
+function refreshFriendSelect() {
   const friends = (window.__friendsCache || []).sort((a,b) => {
     const na = a.type === 'verified' ? (a.customDisplayName || a.displayName || '') : (a.name || '');
     const nb = b.type === 'verified' ? (b.customDisplayName || b.displayName || '') : (b.name || '');
@@ -2601,6 +2595,12 @@ async function sendFriendReq(uid, username, displayName) {
 async function cancelFriendReq(toUid, username) {
   try {
     await window.cancelFriendRequestDB(toUid);
+
+    // Refresh local friends cache so the UI reflects the removal
+    window.__friendsCache = await window.loadFriendsFromDB();
+    refreshFriendSelect();
+    renderSummary();
+
     document.getElementById('search-result-area').innerHTML = `
       <div class="user-result" style="border-color:rgba(255,75,110,.3)">
         <span style="color:var(--red);font-size:.88rem">✕ Request to <strong>@${escH(username)}</strong> cancelled</span>
