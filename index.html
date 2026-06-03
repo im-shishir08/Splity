@@ -1379,7 +1379,7 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChang
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import {
   getFirestore, collection, doc, addDoc, getDoc, setDoc,
-  getDocs, deleteDoc, updateDoc, query, orderBy, where, writeBatch
+  getDocs, deleteDoc, updateDoc, query, orderBy, where, writeBatch, onSnapshot
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 const isConfigured = firebaseConfig.apiKey !== 'YOUR_API_KEY';
@@ -1425,6 +1425,7 @@ window.signInWithGoogle = async () => {
 // ── Sign Out ──
 window.doLogout = async () => {
   if (!confirm('Sign out?')) return;
+  if (window.__friendsUnsubscribe) { window.__friendsUnsubscribe(); window.__friendsUnsubscribe = null; }
   if (isConfigured && auth) { await signOut(auth); }
   else {
     document.getElementById('app').style.display = 'none';
@@ -1601,6 +1602,24 @@ window.removeVerifiedFriendDB = async (friendDocId, friendUid) => {
   try { await deleteDoc(doc(db, 'users', friendUid, 'friends', currentUid)); } catch {}
 };
 
+// Check if still friends with a user (Firestore real-time verify)
+window.checkStillFriendsDB = async (friendUid) => {
+  try {
+    const snap = await getDoc(doc(db, 'users', currentUid, 'friends', friendUid));
+    return snap.exists() && snap.data().type === 'verified';
+  } catch { return false; }
+};
+
+// Real-time listener on friends collection
+window.listenToFriendsDB = (callback) => {
+  if (!currentUid) return () => {};
+  const colRef = collection(db, 'users', currentUid, 'friends');
+  return onSnapshot(colRef, (snapshot) => {
+    const friends = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    callback(friends);
+  }, () => {});
+};
+
 window.updateCustomDisplayNameDB = async (friendDocId, newName) => {
   await updateDoc(doc(db, 'users', currentUid, 'friends', friendDocId), {
     customDisplayName: newName
@@ -1717,6 +1736,28 @@ async function loadAndRender() {
   renderAll();
   refreshFriendSelect();
   updatePendingBadge();
+
+  // Real-time listener: friends collection change হলে auto-update
+  if (window.__friendsUnsubscribe) window.__friendsUnsubscribe();
+  window.__friendsUnsubscribe = window.listenToFriendsDB(function(updatedFriends) {
+    const oldCache = window.__friendsCache || [];
+    // Unfriend detect: আগে ছিল verified, এখন নেই
+    const removed = oldCache.filter(old =>
+      old.type === 'verified' &&
+      !updatedFriends.some(f => f.id === old.id)
+    );
+    window.__friendsCache = updatedFriends;
+    refreshFriendSelect();
+    renderSummary();
+    // যদি manage tab open থাকে
+    const manageTab = document.getElementById('tab-manage');
+    if (manageTab && manageTab.style.display !== 'none') renderManageFriends();
+    const friendsTab = document.getElementById('tab-friends');
+    if (friendsTab && friendsTab.style.display !== 'none') renderFriends();
+    if (removed.length > 0) {
+      showToast('⚠️ ' + removed[0].displayName + ' তোমাকে friends list থেকে সরিয়ে দিয়েছে');
+    }
+  });
 }
 window.loadAndRender = loadAndRender;
 window.__currentUid = null;
@@ -2132,6 +2173,18 @@ async function addTransaction() {
   const friendName = isVerified
     ? (friendObj.customDisplayName || friendObj.displayName)
     : (friendObj.name || friendObj.displayName);
+
+  // Verified friend হলে transaction দেওয়ার আগে Firestore থেকে check করো
+  if (isVerified && friendObj.uid) {
+    const stillFriends = await window.checkStillFriendsDB(friendObj.uid);
+    if (!stillFriends) {
+      window.__friendsCache = window.__friendsCache.filter(f => f.id !== friendId);
+      refreshFriendSelect();
+      renderManageFriends();
+      showToast('⚠️ এই friend তোমাকে remove করে দিয়েছে। Transaction হয়নি।');
+      return;
+    }
+  }
 
   const tx = {
     type: txType,
