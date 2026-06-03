@@ -1737,11 +1737,11 @@ async function loadAndRender() {
   refreshFriendSelect();
   updatePendingBadge();
 
-  // Real-time listener: friends collection change হলে auto-update
+  // Real-time listener: auto-update when friends collection changes
   if (window.__friendsUnsubscribe) window.__friendsUnsubscribe();
   window.__friendsUnsubscribe = window.listenToFriendsDB(function(updatedFriends) {
     const oldCache = window.__friendsCache || [];
-    // Unfriend detect: আগে ছিল verified, এখন নেই
+    // Unfriend detect: was verified before, now gone
     const removed = oldCache.filter(old =>
       old.type === 'verified' &&
       !updatedFriends.some(f => f.id === old.id)
@@ -1749,13 +1749,13 @@ async function loadAndRender() {
     window.__friendsCache = updatedFriends;
     refreshFriendSelect();
     renderSummary();
-    // যদি manage tab open থাকে
+    // Refresh if manage tab is open
     const manageTab = document.getElementById('tab-manage');
     if (manageTab && manageTab.style.display !== 'none') renderManageFriends();
     const friendsTab = document.getElementById('tab-friends');
     if (friendsTab && friendsTab.style.display !== 'none') renderFriends();
     if (removed.length > 0) {
-      showToast('⚠️ ' + removed[0].displayName + ' তোমাকে friends list থেকে সরিয়ে দিয়েছে');
+      showToast('⚠️ ' + removed[0].displayName + ' has removed you from their friends list');
     }
   });
 }
@@ -2174,14 +2174,14 @@ async function addTransaction() {
     ? (friendObj.customDisplayName || friendObj.displayName)
     : (friendObj.name || friendObj.displayName);
 
-  // Verified friend হলে transaction দেওয়ার আগে Firestore থেকে check করো
+  // Check with Firestore before adding a verified transaction
   if (isVerified && friendObj.uid) {
     const stillFriends = await window.checkStillFriendsDB(friendObj.uid);
     if (!stillFriends) {
       window.__friendsCache = window.__friendsCache.filter(f => f.id !== friendId);
       refreshFriendSelect();
       renderManageFriends();
-      showToast('⚠️ এই friend তোমাকে remove করে দিয়েছে। Transaction হয়নি।');
+      showToast('⚠️ This friend has removed you. Transaction cancelled.');
       return;
     }
   }
@@ -2504,10 +2504,10 @@ function onUsernameInput(val) {
       }
     } catch(e) {
       if (e.message === 'rules') {
-        el.innerHTML = '⚠️ Firestore Rules allow read নেই। <a href="https://console.firebase.google.com" target="_blank" style="color:var(--neon)">Console-এ fix করো →</a>';
+        el.innerHTML = '⚠️ Firestore Rules do not allow read. <a href="https://console.firebase.google.com" target="_blank" style="color:var(--neon)">Fix in Console →</a>';
         el.className = 'username-status error';
       } else {
-        el.textContent = '⚠️ Check করা যায়নি — আবার try করো';
+        el.textContent = '⚠️ Could not check — please try again';
         el.className = 'username-status error';
       }
     }
@@ -2580,7 +2580,7 @@ async function searchFriendUser() {
   const alreadyFriend = (window.__friendsCache || []).some(f => f.uid === result.uid);
   const initials = (result.displayName||'?').slice(0,2).toUpperCase();
 
-  // Check if request already sent (Firestore-এ deterministic doc check)
+  // Check if request already sent (deterministic doc check in Firestore)
   const alreadySent = await window.checkReqAlreadySent(result.uid);
 
   if (alreadyFriend) {
@@ -2740,7 +2740,7 @@ function openProfileModal() {
 async function saveNewDisplayName() {
   const inp = document.getElementById('pm-new-displayname');
   const newName = inp ? inp.value.trim() : '';
-  if (!newName) return showToast('নাম লেখো');
+  if (!newName) return showToast('Please enter a name');
   if (newName === window.__myProfile?.displayName) return showToast('Same name already set');
   try {
     await window.updateMyDisplayNameDB(newName);
